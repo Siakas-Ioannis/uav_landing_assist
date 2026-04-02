@@ -1,8 +1,8 @@
 #include <SPI.h>              // SPI Library
 #include <RF24.h>             // Radio Library
+// #include <nRF24L01.h>         // Radio Library
 #include <Servo.h>            // Servomotor Library
 
-// #include <nRF24L01.h>         // Radio Library
 
 // LED Pins
 // 1-5 is the first array, 6-10 is the second array
@@ -34,7 +34,7 @@ uint16_t beepHigh = 500;        // High frequency beeping
 uint8_t headSensi = 1;          // How many degrees the servo turns per 1 deg error
 uint8_t descSensi = 1;          // How many degrees the servo turns per 1 m/s error
 uint8_t headRange = 20;         // Degrees of error to reach LED 1 or 5
-uint8_t descRange = 0.5;          // m/s of error to reach LED 1 or 5
+uint8_t descRange = 0.5;        // m/s of error to reach LED 1 or 5
 
 // This is the structure used to transmit data between the Arduinos
 struct Data {
@@ -134,6 +134,7 @@ byte led[] = {
   PIN_LED_10,
   }; 
 
+// Initializes the LED arrays
 void initLED(){
   for(int i = 0; i<10; i++){
     pinMode(led[i], OUTPUT);
@@ -258,6 +259,7 @@ void controlAltitude() {
   if (data.filAlti <= altiThresMin) {
     setBuzz(beepHigh, 0); // High pitch, 0 duration = solid
   }
+    
   // 3. Proportional Beeping
   else if (data.filAlti <= altiThresMax) {
     // Map altitude to beep interval. As altitude decreases, duration decreases (beeps faster).
