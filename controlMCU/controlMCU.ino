@@ -1,7 +1,7 @@
+#include <Servo.h>            // Servomotor Library
 #include <SPI.h>              // SPI Library
 #include <RF24.h>             // Radio Library
 // #include <nRF24L01.h>         // Radio Library
-#include <Servo.h>            // Servomotor Library
 
 
 // LED Pins
