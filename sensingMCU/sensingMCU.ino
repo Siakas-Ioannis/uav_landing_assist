@@ -1,16 +1,15 @@
 #include <Wire.h>             // I2C Library
 #include <SPI.h>              // SPI Library
 #include <RF24.h>             // Radio Library
-
+// #include <nRF24L01.h>         // Radio Library
 // #include <SFE_BMP180.h>       // Barometer Library
 // #include <MPU6050_tockn.h>    // IMU Library
 // #include <QMC5883LCompass.h>  // Magnetometer Library
 // #include <AsyncSonarLib.h>    // Sonar Library
-// #include <nRF24L01.h>         // Radio Library
 
 // Settings
-int16_t interval = 50;    // Measurement cycle delay (Milliseconds)
-float sonarThres = 0.5;   // Threshold at which Sonar is used for Altitude Measurement (meters)
+int16_t interval = 50;    // Measurement cycle period (Milliseconds)
+float sonarThres = 2.0;   // Threshold at which Sonar is used for Altitude Measurement (meters)
 
 // IMU Variables
 int16_t accelX, accelY, accelZ; // Accelerations (LSB Raw)
@@ -99,6 +98,7 @@ void printDataHeader(){
 
 //////////// I2C (Wire) ////////////
 
+// Initialize I2C Communication
 void initI2C(){
   Wire.begin();
   Serial.println("I2C OK.");
@@ -115,6 +115,7 @@ float trueYawRate = 0; // Earth-frame vertical rotation rate
 float trueAccelZ = 0;  // Earth-frame vertical acceleration (Gravity removed)
 float tiltAlpha = 0.96; // Trust gyro 96%, Accel 4%
 
+// Initialize IMU Module
 void initIMU(){
   // Wake up the MPU6050
   Wire.beginTransmission(MPU_ADDR);
@@ -167,7 +168,7 @@ void readIMU(){
   Pitch = tiltAlpha * (Pitch + gyroRateY_rad * dtSec) + (1.0 - tiltAlpha) * rawPitch;
 
   // --- 3. Accelerometer Earth-Frame Compensation (LSB) ---
-  // These become Linear Acceleration (Gravity Removed) in LSB
+  // These become Linear Acceleration (Gravity Removed) in LSB (1G = 16384)
   accelX = rawAX + (16384.0 * sin(Pitch));
   accelY = rawAY - (16384.0 * sin(Roll) * cos(Pitch));
   accelZ = rawAZ - (16384.0 * cos(Roll) * cos(Pitch));
@@ -186,6 +187,7 @@ void readIMU(){
   trueYawRate = ((float)rateZ / 131.0) * 0.6;
 }
 
+// Calibrate IMU
 void calibrateIMU() {
   Serial.println("IMU CALIBRATION: Keep the module perfectly level and still...");
   long sGX = 0, sGY = 0, sGZ = 0;
@@ -243,6 +245,7 @@ uint16_t ac4, ac5, ac6;
 int32_t b5; 
 int32_t baseline;
 
+// Initialize Barometer Module
 void initBaro() {
   // Read 22 bytes of calibration data from EEPROM
   Wire.beginTransmission(BMP_ADDR);
@@ -271,7 +274,7 @@ int32_t getTruePressure() {
   Wire.write(0xF4); 
   Wire.write(0x2E); 
   Wire.endTransmission();
-  delay(5); // Wait 4.5ms
+  delay(5); // Wait at least 4.5ms
   Wire.beginTransmission(BMP_ADDR);
   Wire.write(0xF6);
   Wire.endTransmission();
@@ -341,6 +344,7 @@ float mScaleX = 1;
 float mScaleY = 1;
 float mScaleZ = 1; 
 
+// Initialize Magnetometer Module
 void initMag() {  
   // Set/Reset Period (Required for QMC5883L)
   Wire.beginTransmission(QMC_ADDR);
@@ -356,6 +360,7 @@ void initMag() {
   Wire.endTransmission();
 
   // FORCE the filter to start at the truth
+  // Avoid large initial error that takes long to be corrected
   readMag();
   calcHeading();
   data.filHead = data.rawHead;
@@ -404,11 +409,13 @@ void calibrateMag() {
   float dY = (yX - yM) / 2.0;
   float dZ = (zX - zM) / 2.0;
   float avgD = (dX + dY + dZ) / 3.0;
-  
+
+  // Average noise out
   float scX = avgD / dX;
   float scY = avgD / dY;
   float scZ = avgD / dZ;
 
+  // Print results to hard-code in the program
   Serial.print("float mOffX = "); Serial.print(offX); Serial.println(";");
   Serial.print("float mOffY = "); Serial.print(offY); Serial.println(";");
   Serial.print("float mOffZ = "); Serial.print(offZ); Serial.println(";");
@@ -425,6 +432,7 @@ void calibrateMag() {
 float soundSpeedCorrection;
 const uint16_t sonarTimeout = 18000; // 18ms timeout (~3 meters)
 
+// Initialize Ultrasonic Distance Sensor
 void initSonar() {
   pinMode(PIN_TRIG, OUTPUT);
   pinMode(PIN_ECHO, INPUT);
@@ -449,7 +457,7 @@ void readSonar() {
 }
 
 void calibrateSonar() {
-  Serial.println("SONAR CALIBRATION: Compensating Speed of Sound fo Temperature...");
+  Serial.println("SONAR CALIBRATION: Compensating Speed of Sound for Temperature...");
   // BMP180 b5 variable holds temperature info
   float tempC = ((b5 + 8) >> 4) / 10.0;
   // Speed of sound = 331.3 + 0.606 * temp
@@ -460,9 +468,10 @@ void calibrateSonar() {
 
 //////////// Radio Frequency Module ////////////
 
-RF24 radio(7, 8); // CE, CSN
+RF24 radio(7, 8); // CE (Chip Enable), CSN (Chip Select Not)
 const byte address[6] = "00001";
 
+// Initialize Radio Transreceiver
 void initRadio(){
   radio.begin();
   radio.openWritingPipe(address);
@@ -529,7 +538,7 @@ void calcDescentRate() {
 
 // --- Kalman Filter (Altitude + Descent Rate) ---
 // --- Tuning ---
-float q_alt = 0.0001;     // Process Noise Covariance (Low = high trust in prediction, because of noisy accelerometer)
+float q_alt = 0.0001;    // Process Noise Covariance (Low = high trust in prediction, because of noisy accelerometer)
 float r_baro = 10.00;    // Baro Measurement Noise Covariance (Higher = less trust, smoother)
 float r_sonar = 0.01;    // Sonar Measurement Noise Covariance (Lower = high trust, very accurate)
 
@@ -609,15 +618,16 @@ void setup() {
   initRadio();
   // Initialize Sensors
   initIMU();
-  calibrateIMU();
   initBaro();
-  calibrateBaro();
   initMag();
-  // calibrateMag();
   initSonar();
+  // Calibrate Sensors
+  calibrateIMU();
+  calibrateBaro();
+  // calibrateMag();
   calibrateSonar();
-  // Print data header to Serial
-  // printDataHeader();
+  // Print data header to Serial (debug)
+  printDataHeader();
 }
 
 
@@ -643,32 +653,8 @@ void loop() {
     // Filter Values
     updateFilters();
     
-    // Print for Debugging
-    // printAccel();
-    // printGyro();
-    // printMag();
-    // printBaro();
-    // printSonar();
-    // printData();
-    // Serial.print(Roll); Serial.print('\t');
-    // Serial.print(Pitch); Serial.print('\t');
-    // Serial.print(trueAccelZ); Serial.print('\t');
-    // Serial.print(trueYawRate); Serial.print('\t');
-    // Serial.print(data.rawHead); Serial.print('\t');
-    // Serial.print(data.filHead); Serial.print('\t');
-    // Serial.print(data.dt); Serial.print('\t');
-    // Serial.print(data.rawDesc); Serial.print('\t');
-    // Serial.print(data.filDesc); Serial.print('\t');
-    Serial.print(data.rawHead); Serial.print(',');
-    Serial.print(data.filHead); Serial.print(',');
-    Serial.print(data.rawAlti); Serial.print(',');
-    Serial.print(data.filAlti); Serial.print(',');
-    Serial.print(data.rawDesc); Serial.print(',');
-    Serial.print(data.filDesc); Serial.print(',');
-    Serial.print(data.dt);      Serial.print(',');
-    // Serial.print(data.time);    Serial.print(',');
-    Serial.print(data.sonarOn); Serial.print(',');
-    Serial.println(distance);
+    // Print data to Serial (debug)
+    printData();
 
     // Send Data to Ground Station
     sendRadio();
