@@ -6,19 +6,19 @@
 
 // LED Pins
 // 1-5 is the first array, 6-10 is the second array
-#define PIN_LED_1 A1
-#define PIN_LED_2 A2
-#define PIN_LED_3 A3
-#define PIN_LED_4 A4
-#define PIN_LED_5 A5
-#define PIN_LED_6 A0
-#define PIN_LED_7 2
-#define PIN_LED_8 3
-#define PIN_LED_9 9
+#define PIN_LED_1 A0
+#define PIN_LED_2 A1
+#define PIN_LED_3 A2
+#define PIN_LED_4 A3
+#define PIN_LED_5 A4
+#define PIN_LED_6 2
+#define PIN_LED_7 3
+#define PIN_LED_8 9
+#define PIN_LED_9 A5
 #define PIN_LED_10 A6
 // Buzzer Pin
 #define PIN_BUZZER  4
-// Servo Pin
+// Servo Pins
 #define PIN_SERVO_1 5
 #define PIN_SERVO_2 6
 
@@ -31,10 +31,8 @@ uint16_t beepMin = 50;          // Minimum beeping interval
 uint16_t beepMax = 500;         // Maximum beeping interval
 uint16_t beepLow = 250;         // Low frequency beeping
 uint16_t beepHigh = 500;        // High frequency beeping
-uint8_t headSensi = 1;          // How many degrees the servo turns per 1 deg error
-uint8_t descSensi = 1;          // How many degrees the servo turns per 1 m/s error
-uint8_t headRange = 20;         // Degrees of error to reach LED 1 or 5
-uint8_t descRange = 0.5;        // m/s of error to reach LED 1 or 5
+float headSensi = 0.5;          // How many degrees the servo turns per 1 deg error
+float descSensi = 30.0;         // How many degrees the servo turns per 1 m/s error
 
 // This is the structure used to transmit data between the Arduinos
 struct Data {
@@ -50,7 +48,7 @@ struct Data {
   uint32_t time;        // time past program start in Milliseconds
   uint16_t dt;          // delta Time in Milliseconds
   // Flags
-  bool sonarOn;     // Is sonar being used for altitude calculation
+  bool sonarOn;         // Is sonar being used for altitude calculation
 }; Data data;
 
 
@@ -99,8 +97,8 @@ void initRadio(){
 void receiveRadio(){ 
   if (radio.available()) {
     radio.read(&data, sizeof(data));
-    printData();
-
+    //printData();
+    
     controlHeading();
     controlDescent();
     controlAltitude();
@@ -115,7 +113,14 @@ Servo servo2;
 void initServo(){
   servo1.attach(PIN_SERVO_1);
   servo2.attach(PIN_SERVO_2);
-
+  servo1.write(0);
+  servo2.write(0);
+  delay(500);
+  servo1.write(180);
+  servo2.write(180);
+  delay(500);
+  servo1.write(90);
+  servo2.write(90);
   Serial.println("Servo OK.");
 }
 
@@ -134,10 +139,10 @@ byte led[] = {
   PIN_LED_10,
   }; 
 
-// Initializes the LED arrays
 void initLED(){
   for(int i = 0; i<10; i++){
     pinMode(led[i], OUTPUT);
+    digitalWrite(led[i], 1);
   }
 
   Serial.println("LEDs OK.");
@@ -145,19 +150,19 @@ void initLED(){
 
 // Configures the LED Array 1
 void setLED1(int ledIndex){
-  //Count through the array and turn on the specified leds, while turning off the rest
-  for(int i = 0; i<5; i++){ 
-    if(i == ledIndex - 1){ digitalWrite(led[i], HIGH); }
-    else{ digitalWrite(led[i], LOW); }
+  // Turn on the specified LED, while turning off the rest
+  for(int i = 1; i<=5; i++){ 
+    if(i == ledIndex){ digitalWrite(led[i-1], HIGH); }
+    else{              digitalWrite(led[i-1], LOW); }
   }
 }
 
 // Configures the LED Array 2
 void setLED2(int ledIndex){
-  //Count through the array and turn on the specified leds, while turning off the rest
-  for(int i = 5; i<10; i++){ 
-    if(i == ledIndex + 4){ digitalWrite(led[i], HIGH); }
-    else{ digitalWrite(led[i], LOW); }
+  // Turn on the specified LED, while turning off the rest
+  for(int i = 1; i<=5; i++){ 
+    if(i == ledIndex){ digitalWrite(led[i+4], HIGH); }
+    else{              digitalWrite(led[i+4], LOW); }
   }
 }
 
@@ -223,14 +228,15 @@ void controlHeading() {
   if (error < -180) error += 360;
 
   // 2. Map error to Servo angle
-  int angle = constrain(90 + (int)(error * 0.5), 0, 180);
+  int angle = constrain(90 + error*headSensi, 0, 180);
   
-  // 3. Map error to LED Array (Mapping error to index 1-5)
-  int ledIndex = map(constrain(error, -headRange, headRange)*100, -headRange*100, headRange*100, 1, 5);
-  
+  // 3. Map angle to LED Array
+  int ledIndex = map(constrain(angle, 0, 180), 0, 180, 1, 6);
+
   // 4. Apply to Servo1 and LED Array 1
-  servo1.write(angle);
-  setLED1(ledIndex);
+  servo1.write(180 - angle);Serial.print(180 - angle);
+  setLED1(ledIndex);Serial.print(ledIndex);
+  Serial.println();
 }
 
 void controlDescent() {
@@ -238,13 +244,13 @@ void controlDescent() {
   float error = data.filDesc - targetDescent;
 
   // 2. Map error to Servo angle
-  int angle = constrain(90 + (int)(error * descSensi * 90), 0, 180);
+  int angle = constrain(90 + error*descSensi, 0, 180);
 
-  // 3. Map error to LED Array (Mapping error to index 1-5)
-  int ledIndex = map(constrain(error, -descRange, descRange)*100, -descRange*100, descRange*100, 1, 5);
-  
+  // 3. Map angle to LED Array
+  int ledIndex = map(constrain(angle, 0, 180), 0, 180, 1, 6);
+
   // 4. Apply to Servo2 and LED Array 2
-  servo2.write(angle);
+  servo2.write(180 - angle);
   setLED2(ledIndex);
 }
 
@@ -259,7 +265,6 @@ void controlAltitude() {
   if (data.filAlti <= altiThresMin) {
     setBuzz(beepHigh, 0); // High pitch, 0 duration = solid
   }
-    
   // 3. Proportional Beeping
   else if (data.filAlti <= altiThresMax) {
     // Map altitude to beep interval. As altitude decreases, duration decreases (beeps faster).
